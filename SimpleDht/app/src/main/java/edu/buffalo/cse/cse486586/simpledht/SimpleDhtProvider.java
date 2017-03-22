@@ -105,6 +105,18 @@ public class SimpleDhtProvider extends ContentProvider {
     @Override
     public int delete(Uri uri, String selection, String[] selectionArgs) {
         // TODO Auto-generated method stub
+
+        String query = "delete from " + MY_DB;
+        String clause = "key=?";
+
+        if(selection.equals("*") || selection.equals("@")){
+            sqLiteDatabase.delete(MY_DB, null, null);
+        }else{
+            sqLiteDatabase.delete(MY_DB, clause, new String[]{selection});
+        }
+
+
+//        sqLiteDatabase.rawQuery(query, null);
         return 0;
     }
 
@@ -175,8 +187,10 @@ public class SimpleDhtProvider extends ContentProvider {
                 String split[] = res.split(":");
                 MatrixCursor matrixCursor = new MatrixCursor(new String[]{KEY_FIELD, VALUE_FIELD});
 
-                for(int i=0; i<split.length; i+=2){
-                    matrixCursor.addRow(new String[] { split[i], split[i+1]});
+                if(!res.equals("")){
+                    for(int i=0; i<split.length; i+=2){
+                        matrixCursor.addRow(new String[] { split[i], split[i+1]});
+                    }
                 }
                 return matrixCursor;
             } catch (InterruptedException e) {
@@ -194,7 +208,7 @@ public class SimpleDhtProvider extends ContentProvider {
                 }else {
                     Log.i(TAG, "query: res:"+res);
                     MatrixCursor matrixCursor = new MatrixCursor(new String[]{KEY_FIELD, VALUE_FIELD});
-                    matrixCursor.addRow(new String[] {res.split(":")[0], res.split(":")[1]});
+                    if(!res.equals(""))matrixCursor.addRow(new String[] {res.split(":")[0], res.split(":")[1]});
                     return matrixCursor;
                 }
             } catch (InterruptedException e) {
@@ -272,8 +286,9 @@ public class SimpleDhtProvider extends ContentProvider {
             BufferedReader bufferedReader;
             BufferedWriter bufferedWriter;
 
-            try{
-                while(true){
+
+            while(true) {
+                try {
                     client = serverSocket.accept();
                     inputStream = client.getInputStream();
                     bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
@@ -286,7 +301,7 @@ public class SimpleDhtProvider extends ContentProvider {
 
 //                    Log.i(TAG, "doInBackground server: received:"+msgin);
                     int op = Integer.parseInt(msgin.split(":")[0]);
-                    if(op == INSERT){
+                    if (op == INSERT) {
 
                         String key = msgin.split(":")[1];
                         String value = msgin.split(":")[2];
@@ -302,53 +317,61 @@ public class SimpleDhtProvider extends ContentProvider {
                         bufferedWriter.flush();
                         bufferedWriter.close();
                         outputStream.close();
-                    }else if(op == QUERY){
+                    } else if (op == QUERY) {
 
 
                         Cursor c = null;
                         String key = msgin.split(":")[1];
-                        String query = "select * from " + MY_DB ;
+                        String query = "select * from " + MY_DB;
                         String clause = " where key=\"" + key + "\"";
-                        Log.i(TAG, "doInBackground: received==="+msgin);
-                        if(!key.equals("@")){
+                        Log.i(TAG, "doInBackground: received===" + msgin);
+                        if (key.equals("@")) {
+
+                        } else {
                             query += clause;
                         }
-                        c = sqLiteDatabase.rawQuery(query, null);
-
-
-                        int keyindex = c.getColumnIndex(KEY_FIELD);
-                        int valueindex = c.getColumnIndex(VALUE_FIELD);
                         String msgout = "";
-                        Log.i(TAG, "doInBackground: seding msg" + c.getCount());
-                        c.moveToFirst();
-                        while(!c.isAfterLast()){
-                            msgout += c.getString(keyindex)+":";
-                            if(c.isLast()){
-                                msgout += c.getString(valueindex);
-                            }else{
-                                msgout += c.getString(valueindex)+":";
+                        try {
+                            c = sqLiteDatabase.rawQuery(query, null);
+                            int keyindex = c.getColumnIndex(KEY_FIELD);
+                            int valueindex = c.getColumnIndex(VALUE_FIELD);
+                            if (c.getCount() != 0) {
+                                c.moveToFirst();
+                                while (!c.isAfterLast()) {
+                                    msgout += c.getString(keyindex) + ":";
+                                    if (c.isLast()) {
+                                        msgout += c.getString(valueindex);
+                                    } else {
+                                        msgout += c.getString(valueindex) + ":";
+                                    }
+                                    c.moveToNext();
+                                }
                             }
-                            c.moveToNext();
+
+                            c.close();
+                        }catch (NullPointerException e){
+                            Log.e(TAG, "doInBackground: " + e.toString() );
                         }
 
-                        Log.i(TAG, "doInBackground: "+msgout);
-                        bufferedWriter.write(msgout+"\n");
-                        Log.i(TAG, "doInBackground: cursor sent");
+                        Log.i(TAG, "doInBackground: seding msg");
+                        Log.i(TAG, "doInBackground: " + msgout);
+                        bufferedWriter.write(msgout + "\n");
                         bufferedWriter.flush();
+
+                        Log.i(TAG, "doInBackground: cursor sent");
                         bufferedWriter.close();
-                        outputStream.flush();
                         outputStream.close();
 
                     }
                     bufferedReader.close();
                     inputStream.close();
                     client.close();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                    Log.e(TAG, "doInBackground: " + e.toString() );
                 }
-            }catch (Exception e){
-
             }
 
-            return null;
         }
     }
 
@@ -415,7 +438,7 @@ public class SimpleDhtProvider extends ContentProvider {
                         res = "";
                         for(String port : REMOTE_PORTS){
                             String resp = tryquery(msg, port);
-                            if(resp != null){
+                            if(resp != null && !resp.equals("")){
                                 if(res.equals("")){
                                     res += resp;
                                 }else{
@@ -458,25 +481,30 @@ public class SimpleDhtProvider extends ContentProvider {
             OutputStream outputStream;
             BufferedReader bufferedReader;
             BufferedWriter bufferedWriter;
-            Socket socket = null;
             try {
-                 socket = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), Integer.parseInt(port));
+                Log.i(TAG, "tryquery: connecting");
+                Socket socket = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), Integer.parseInt(port));
+                Log.i(TAG, "tryquery: connected");
 
                 inputStream = socket.getInputStream();
                 outputStream = socket.getOutputStream();
                 bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
                 bufferedWriter = new BufferedWriter(new OutputStreamWriter(outputStream));
 
+                Log.i(TAG, "tryquery: sending query");
                 bufferedWriter.write(msg + "\n");
                 bufferedWriter.flush();
 
                 res = bufferedReader.readLine();
+
+                Log.i(TAG, "tryquery: received res");
                 bufferedWriter.close();
                 bufferedReader.close();
                 outputStream.close();
                 inputStream.close();
                 socket.close();
-            } catch (IOException e) {
+            } catch(Exception e){
+                res = null;
                 e.printStackTrace();
             }
 
@@ -521,13 +549,12 @@ public class SimpleDhtProvider extends ContentProvider {
                     Log.i(TAG, "tryinsert: alive");
                     return true;
                 }
-                Log.i(TAG, "tryinsert: dead");
-                return false;
 
             } catch (Exception e) {
-//                e.printStackTrace();
+                e.printStackTrace();
             }
 
+            Log.i(TAG, "tryinsert: dead");
             return false;
         }
     }

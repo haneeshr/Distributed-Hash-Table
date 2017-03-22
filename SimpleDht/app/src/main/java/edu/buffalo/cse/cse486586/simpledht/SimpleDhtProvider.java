@@ -124,6 +124,7 @@ public class SimpleDhtProvider extends ContentProvider {
         String value = (String) values.get("value");
         String msg = INSERT + ":" + key + ":" + value;
 
+
         try {
             new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, msg, String.valueOf(INSERT)).get();
         } catch (InterruptedException e) {
@@ -131,16 +132,6 @@ public class SimpleDhtProvider extends ContentProvider {
         } catch (ExecutionException e) {
             e.printStackTrace();
         }
-
-//        String toPort = toPort(key);
-//        if(toPort.equals(myport)){
-//            sqLiteDatabase = sqLiteOpenHelper.getWritableDatabase();
-//            sqLiteDatabase.insertWithOnConflict("myDB", null, values, SQLiteDatabase.CONFLICT_REPLACE);
-//            Log.v("insert", values.toString());
-//        }else{
-//            new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, msg, toPort, INSERT);
-//        }
-
 
         return null;
     }
@@ -171,72 +162,47 @@ public class SimpleDhtProvider extends ContentProvider {
             String sortOrder) {
         // TODO Auto-generated method stub
 
-
-//        try{
-//
-//            if(selection.equals("@")){
-//                //return all in local table...so the query is not changed
-//
-//                c = sqLiteDatabase.rawQuery(query, null);
-//                return c;
-//
-//            }else if(selection.equals("*")){
-//                //return all key-value pairs in entire DHT
-//
-//                Log.i(TAG, "query: GDump");
-//                String msg = "query"+":"+"@";
-//                String res = new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, msg, null, String.valueOf(QUERY)).get();
-//                String split[] = res.split(":");
-//                Log.i(TAG, "query: split"+split.length);
-//
-//                MatrixCursor matrixCursor = new MatrixCursor(new String[]{KEY_FIELD, VALUE_FIELD});
-//
-//                for(int i=0; i<split.length; i+=2){
-//                    matrixCursor.addRow(new String[] { split[i], split[i+1]});
-//                }
-//
-//                return matrixCursor;
-//            }else{
-//                // Key in any one of the tables in the ring
-//                String inport = toPort(selection);
-//                if(myport.equals(inport)){
-//                    //Key in my table...return from here
-//
-//                    query += clause;
-//                    c = sqLiteDatabase.rawQuery(query, null);
-//                    c.moveToNext();
-//                    return c;
-//
-//                }else{
-//                    //key in other table...request other table
-//                    String msg = QUERY + ":" + selection;
-//                    String res = new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, msg, inport, String.valueOf(QUERY)).get();
-//
-//                    String split[] = res.split(":");
-//
-//                    MatrixCursor matrixCursor = new MatrixCursor(new String[]{KEY_FIELD, VALUE_FIELD});
-//
-//                    for(int i=0; i<split.length; i+=2){
-//                        matrixCursor.addRow(new String[] { split[i], split[i+1]});
-//                    }
-//                    return matrixCursor;
-//                }
-//
-//            }
-//        }catch (Exception e){
-//            e.printStackTrace();
-//        }
-
         Cursor c=null;
         String query = "select * from " + MY_DB ;
         String clause = " where key=\"" + selection + "\"";
 
-        if(selection.equals("*") || selection.equals("@")){
+        if(selection.equals("@")){
+            c = sqLiteDatabase.rawQuery(query, null);
+        }else if(selection.equals("*")){
+            String msg = QUERY + ":@";
+            try {
+                String res = new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, msg, String.valueOf(QUERY)).get();
+                String split[] = res.split(":");
+                MatrixCursor matrixCursor = new MatrixCursor(new String[]{KEY_FIELD, VALUE_FIELD});
 
+                for(int i=0; i<split.length; i+=2){
+                    matrixCursor.addRow(new String[] { split[i], split[i+1]});
+                }
+                return matrixCursor;
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            } catch (ExecutionException e) {
+                e.printStackTrace();
+            }
         }else{
-            query += clause;
+            String msg = QUERY + ":" + selection;
+            try {
+                String res = new ClientTask().executeOnExecutor(AsyncTask.SERIAL_EXECUTOR, msg, String.valueOf(QUERY)).get();
+                if(res == null){
+                    query += clause;
+                    c = sqLiteDatabase.rawQuery(query, null);
+                }else {
+                    Log.i(TAG, "query: res:"+res);
+                    MatrixCursor matrixCursor = new MatrixCursor(new String[]{KEY_FIELD, VALUE_FIELD});
+                    matrixCursor.addRow(new String[] {res.split(":")[0], res.split(":")[1]});
+                    return matrixCursor;
+                }
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            } catch (ExecutionException e) {
+                e.printStackTrace();
+            }
         }
-        c = sqLiteDatabase.rawQuery(query, null);
 
         Log.v("query", selection);
         return c;
@@ -311,6 +277,8 @@ public class SimpleDhtProvider extends ContentProvider {
                     client = serverSocket.accept();
                     inputStream = client.getInputStream();
                     bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
+                    outputStream = client.getOutputStream();
+                    bufferedWriter = new BufferedWriter(new OutputStreamWriter(outputStream));
 
                     String msgin = "";
 //                    Log.i(TAG, "doInBackground server: waiting for msg");
@@ -335,12 +303,18 @@ public class SimpleDhtProvider extends ContentProvider {
                         bufferedWriter.close();
                         outputStream.close();
                     }else if(op == QUERY){
+
+
                         Cursor c = null;
                         String key = msgin.split(":")[1];
+                        String query = "select * from " + MY_DB ;
+                        String clause = " where key=\"" + key + "\"";
                         Log.i(TAG, "doInBackground: received==="+msgin);
-                        c = query(null, null, key, null, null);
-                        outputStream = client.getOutputStream();
-                        bufferedWriter = new BufferedWriter(new OutputStreamWriter(outputStream));
+                        if(!key.equals("@")){
+                            query += clause;
+                        }
+                        c = sqLiteDatabase.rawQuery(query, null);
+
 
                         int keyindex = c.getColumnIndex(KEY_FIELD);
                         int valueindex = c.getColumnIndex(VALUE_FIELD);
@@ -357,6 +331,7 @@ public class SimpleDhtProvider extends ContentProvider {
                             c.moveToNext();
                         }
 
+                        Log.i(TAG, "doInBackground: "+msgout);
                         bufferedWriter.write(msgout+"\n");
                         Log.i(TAG, "doInBackground: cursor sent");
                         bufferedWriter.flush();
@@ -384,23 +359,19 @@ public class SimpleDhtProvider extends ContentProvider {
         @Override
         protected String doInBackground(String... params) {
             String msg = params[0];
-//            String remote_port = params[1];
             int op = Integer.parseInt(params[1]);
 
-            Socket client;
-            OutputStream outputStream;
-            InputStream inputStream;
-            BufferedReader bufferedReader;
-            BufferedWriter bufferedWriter;
+            String key;
+            String value;
+            String hash = "";
 
 
             switch (op){
                 case INSERT:
                     boolean inserted = false;
-                    String key = msg.split(":")[1];
-                    String value = msg.split(":")[2];
+                    key = msg.split(":")[1];
+                    value = msg.split(":")[2];
 
-                    String hash = "";
                     try {
                         hash = genHash(key);
                     } catch (NoSuchAlgorithmException e) {
@@ -419,13 +390,10 @@ public class SimpleDhtProvider extends ContentProvider {
 
                     if(!inserted){
                         Log.i(TAG, "doInBackground: not yet inserted");
-                        if(!tryinsert(msg, hash_ports.get(hashvals.get(0)))){
-
-                            ContentValues values = new ContentValues();
-                            values.put(KEY_FIELD, key);
-                            values.put(VALUE_FIELD, value);
-                            sqLiteDatabase = sqLiteOpenHelper.getWritableDatabase();
-                            sqLiteDatabase.insertWithOnConflict(MY_DB, null, values, SQLiteDatabase.CONFLICT_REPLACE);
+                        for(String hashval : hashvals){
+                            if(tryinsert(msg, hash_ports.get(hashval))){
+                                break;
+                            }
                         }
                     }
 
@@ -434,97 +402,84 @@ public class SimpleDhtProvider extends ContentProvider {
 
                 case QUERY:
 
+                    boolean queried = false;
+                    key = msg.split(":")[1];
 
-                    break;
+                    try {
+                        hash = genHash(key);
+                    } catch (NoSuchAlgorithmException e) {
+                        e.printStackTrace();
+                    }
+
+                    if(key.equals("@")){
+                        res = "";
+                        for(String port : REMOTE_PORTS){
+                            String resp = tryquery(msg, port);
+                            if(resp != null){
+                                if(res.equals("")){
+                                    res += resp;
+                                }else{
+                                    res += ":" + resp;
+                                }
+                            }
+                        }
+
+                    }else{
+                        for(String hashval : hashvals){
+                            res = null;
+                            if(hash.compareTo(hashval)<0){
+                                res = tryquery(msg, hash_ports.get(hashval));
+                                if(res != null){
+                                    return res;
+                                }
+                            }
+                        }
+
+                        for(String hashval : hashvals){
+                            res = tryquery(msg, hash_ports.get(hashval));
+                            if(res != null){
+                                break;
+                            }
+                        }
+                    }
+                    return res;
 
                 case DELETE:
 
                     break;
             }
 
-//            if(op == INSERT){
-//                //insert to other avd
-//                //            Log.i(TAG, "doInBackground: sending msg");
-//                try {
-//                    client = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), Integer.parseInt(remote_port));
-////                Log.i(TAG, "doInBackground: connected to remote port");
-//                    outputStream = client.getOutputStream();
-//                    bufferedWriter = new BufferedWriter(new OutputStreamWriter(outputStream));
-//
-//                    bufferedWriter.write(msg + "\n");
-//                    bufferedWriter.flush();
-//                    bufferedWriter.close();
-//                    outputStream.close();
-//
-//
-//
-//                    client.close();
-////                Log.i(TAG, "doInBackground: message sent"+msg);
-//                } catch (Exception e) {
-//                    Log.e(TAG, "doInBackground: "+e.toString() );
-//                }
-//            }else if(op == QUERY){
-//                //Query to other avd
-//
-//                if(remote_port == null){
-//                    //get cursors from all remote avds
-//
-//                    for(String remotePort: REMOTE_PORTS){
-//                            try{
-//                                client = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), Integer.parseInt(remotePort));
-//                                outputStream = client.getOutputStream();
-//                                bufferedWriter = new BufferedWriter(new OutputStreamWriter(outputStream));
-//                                inputStream = client.getInputStream();
-//                                bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
-//
-//                                bufferedWriter.write(msg+"\n");
-//                                bufferedWriter.flush();
-//
-//                                if(res.equals("")){
-//                                    res = bufferedReader.readLine();
-//                                }else{
-//                                    res += ":" + bufferedReader.readLine();
-//                                }
-//
-//                                Log.i(TAG, "doInBackground: received gdump res"+res);
-//                                bufferedWriter.close();
-//                                outputStream.close();
-//                                bufferedReader.close();
-//                                inputStream.close();
-//                            }catch (Exception e){
-//                                Log.e(TAG, "doInBackground: client"+ e.toString() );
-//                            }
-//                        }
-//                    }
-//                else {
-//                    // get cursor from single remote avd
-//
-//                    try {
-//
-//                        client = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2,}), Integer.parseInt(remote_port));
-//                        outputStream = client.getOutputStream();
-//                        bufferedWriter = new BufferedWriter(new OutputStreamWriter(outputStream));
-//                        inputStream = client.getInputStream();
-//                        bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
-//
-//                        bufferedWriter.write(msg + "\n");
-//                        bufferedWriter.flush();
-//
-//
-//                        res = bufferedReader.readLine();
-//
-//                        bufferedWriter.close();
-//                        outputStream.flush();
-//                        outputStream.close();
-//
-//                    } catch (Exception e) {
-//                        Log.e(TAG, "doInBackground: client" + e.toString());
-//                    }
-//                }
-//            }else if(op == DELETE){
-//                //Delete from other avd
-//
-//            }
+            return res;
+        }
+
+        private String tryquery(String msg, String port) {
+            String res = null;
+            InputStream inputStream;
+            OutputStream outputStream;
+            BufferedReader bufferedReader;
+            BufferedWriter bufferedWriter;
+            Socket socket = null;
+            try {
+                 socket = new Socket(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), Integer.parseInt(port));
+
+                inputStream = socket.getInputStream();
+                outputStream = socket.getOutputStream();
+                bufferedReader = new BufferedReader(new InputStreamReader(inputStream));
+                bufferedWriter = new BufferedWriter(new OutputStreamWriter(outputStream));
+
+                bufferedWriter.write(msg + "\n");
+                bufferedWriter.flush();
+
+                res = bufferedReader.readLine();
+                bufferedWriter.close();
+                bufferedReader.close();
+                outputStream.close();
+                inputStream.close();
+                socket.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+
 
             return res;
         }
@@ -538,9 +493,9 @@ public class SimpleDhtProvider extends ContentProvider {
             try {
                 Log.i(TAG, "tryinsert: connecting");
 
-                Socket socket = new Socket();
-                socket.connect(new InetSocketAddress(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), Integer.parseInt(port)), 100);
-//                socket = new Socket(InetAddress.getByAddress(new byte[]{10, 0 ,2, 2}), Integer.parseInt(port));
+//                Socket socket = new Socket();
+//                socket.connect(new InetSocketAddress(InetAddress.getByAddress(new byte[]{10, 0, 2, 2}), Integer.parseInt(port)), 100);
+                Socket socket = new Socket(InetAddress.getByAddress(new byte[]{10, 0 ,2, 2}), Integer.parseInt(port));
                 Log.i(TAG, "tryinsert: connected");
 
                 inputStream = socket.getInputStream();
@@ -559,6 +514,7 @@ public class SimpleDhtProvider extends ContentProvider {
                 bufferedWriter.close();
                 inputStream.close();
                 outputStream.close();
+                socket.close();
                 
                 
                 if (!(rep == null)) {

@@ -13,6 +13,9 @@ import android.widget.TextView;
 
 public class SimpleDhtActivity extends Activity {
 
+    private static final String KEY_FIELD = "key";
+    private static final String VALUE_FIELD = "value";
+
     ContentResolver contentResolver;
     Uri mUri;
 
@@ -42,7 +45,13 @@ public class SimpleDhtActivity extends Activity {
                     public void onClick(View v) {
 
                         Cursor cursor = contentResolver.query(mUri, null, "*", null, null);
-                        tv.append(String.valueOf(cursor.getCount())+"\n");
+                        cursor.moveToFirst();
+                        int keyindex = cursor.getColumnIndex(KEY_FIELD);
+                        int valueindex = cursor.getColumnIndex(VALUE_FIELD);
+                        while(!cursor.isAfterLast()){
+                            tv.append(cursor.getString(keyindex) + "=====" + cursor.getString(valueindex)+ "\n");
+                            cursor.moveToNext();
+                        }
                     }
                 }
         );

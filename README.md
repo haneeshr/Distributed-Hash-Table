@@ -1,1 +1,1 @@
-# Distributed_SystemsCSE586
+This project deals with implementation of a distributed key-value storage system. The servers are connected to each other in the form of a ring, which is built based on the chord. The system provides operations like insert, query and delete. This implementation is scalable to any number of servers.
